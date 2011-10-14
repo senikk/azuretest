@@ -2,5 +2,5 @@
 gem "sinatra"
 gem "sinatra-reloader"
 gem "rest-client"
-gem "waz-storage"
+gem "waz-storage", "~> 1.1.1"
 gem "json"
