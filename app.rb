@@ -1,6 +1,5 @@
 ﻿require 'sinatra'
 require 'waz-storage'
-require 'waz-tables'
 require File.dirname(__FILE__) + '/test.rb'
 require File.dirname(__FILE__) + '/test2.rb'
 require File.dirname(__FILE__) + '/secrets.rb'
