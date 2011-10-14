@@ -1,0 +1,1 @@
+﻿SENIKK = "Terje Pedersen"
