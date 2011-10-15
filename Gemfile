@@ -1,6 +1,5 @@
 ﻿source "http://rubygems.org"
 gem "sinatra"
 gem "sinatra-reloader"
-gem "rest-client"
-gem "waz-storage", "~> 1.1.1"
 gem "json"
+gem "waz-storage"
