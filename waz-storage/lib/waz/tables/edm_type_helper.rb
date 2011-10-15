@@ -23,7 +23,7 @@ module WAZ
         def parse_to(item)
           case item.class.name
             when 'String'
-              [item.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;'), 'Edm.String']
+              [item, 'Edm.String']
             when 'Fixnum'
               [item, 'Edm.Int32']
             when 'Float'
@@ -36,7 +36,7 @@ module WAZ
               item.pos = 0
               [Base64.encode64(item.read), 'Edm.Binary']
             else
-              [item.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;'), 'Edm.String']
+              [item, 'Edm.String']
           end
         end
       end

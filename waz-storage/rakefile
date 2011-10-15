@@ -1,17 +1,18 @@
 require 'rake'
 require 'rubygems'
-require 'spec/rake/spectask'
+require 'rspec/core/rake_task'
 require 'rake/gempackagetask'
 require 'rake/rdoctask'
 require 'lib/waz-storage'
 
 task :default => [:specs]
 
-Spec::Rake::SpecTask.new('specs') do |t|
-  t.spec_files = FileList['tests/waz/blobs/*.rb', 'tests/waz/queues/*.rb', 'tests/waz/tables/*.rb', 'tests/waz/storage/*.rb']
+RSpec::Core::RakeTask.new do |t|
+  t.name = :specs
+  t.pattern = "tests/**/*.rb"
   t.rcov = true
   t.rcov_opts = ['--text-report', '--exclude', "exclude.*/.gem,test,Library,#{ENV['GEM_HOME']}", '--sort', 'coverage' ]
-  t.spec_opts = ['-cfn']
+  t.rspec_opts = ['-cfn']
 end
 
 
@@ -43,7 +44,7 @@ end
 namespace :docs do
   Rake::RDocTask.new do |t|
   	t.rdoc_dir = 'rdoc'
-  	t.title    = "Windows Azure Storage library — simple gem for accessing WAZ‘s Storage REST API"
+  	t.title    = "Windows Azure Storage library - simple gem for accessing WAZ's Storage REST API"
   	t.options << '--line-numbers' << '--inline-source' << '-A cattr_accessor=object'
   	t.options << '--charset' << 'utf-8'
   	t.rdoc_files.include('README.rdoc')

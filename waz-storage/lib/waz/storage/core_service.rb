@@ -3,10 +3,14 @@ module WAZ
     # This module is imported by the specific services that use Shared Key authentication profile. On the current implementation
     # this module is imported from WAZ::Queues::Service and WAZ::Blobs::Service.
     module SharedKeyCoreService
-      attr_accessor :account_name, :access_key, :use_ssl, :base_url, :type_of_service, :use_devenv
+      attr_accessor :account_name, :access_key, :use_ssl, :base_url, :type_of_service, :use_devenv, :use_sas_auth_only, :sharedaccesssignature
       
       # Creates an instance of the implementor service (internally used by the API).
       def initialize(options = {})
+        # Flag to define the use of shared access signature only
+        self.use_sas_auth_only = options[:use_sas_auth_only] or false
+        self.sharedaccesssignature = options[:sharedaccesssignature] 
+
         self.account_name = options[:account_name]
         self.access_key = options[:access_key]
         self.type_of_service = options[:type_of_service]        
@@ -23,9 +27,9 @@ module WAZ
         http_headers = {}
         headers.each{ |k, v| http_headers[k.to_s.gsub(/_/, '-')] = v} unless headers.nil?
         http_headers.merge!("x-ms-Date" => Time.new.httpdate)
-        http_headers.merge!("Content-Length" => (payload or "").length)
+        http_headers.merge!("Content-Length" => (payload or "").size)
         request = {:headers => http_headers, :method => verb.to_s.downcase.to_sym, :url => url, :payload => payload}
-        request[:headers].merge!("Authorization" => "SharedKey #{account_name}:#{generate_signature(request)}")
+        request[:headers].merge!("Authorization" => "SharedKey #{account_name}:#{generate_signature(request)}") unless self.use_sas_auth_only 
         return RestClient::Request.new(request)
       end
       
@@ -34,9 +38,13 @@ module WAZ
       def generate_request_uri(path = nil, options = {})
         protocol = use_ssl ? "https" : "http"
         query_params = options.keys.sort{ |a, b| a.to_s <=> b.to_s}.map{ |k| "#{k.to_s.gsub(/_/, '')}=#{CGI.escape(options[k].to_s)}"}.join("&") unless options.nil? or options.empty?
-        uri = "#{protocol}://#{base_url}/#{account_name}#{(path.gsub(' ', '%20') or "").start_with?("/") ? "" : "/"}#{(path.gsub(' ', '%20') or "")}" if !self.use_devenv.nil? and self.use_devenv
-        uri ||= "#{protocol}://#{account_name}.#{base_url}#{(path.gsub(' ', '%20') or "").start_with?("/") ? "" : "/"}#{(path.gsub(' ', '%20') or "")}" 
-        uri << "?#{query_params}" if query_params
+        uri = "#{protocol}://#{base_url}/#{path.start_with?(account_name) ? "" : account_name }#{((path or "").start_with?("/") or path.start_with?(account_name)) ? "" : "/"}#{(path or "")}" if !self.use_devenv.nil? and self.use_devenv
+        uri ||= "#{protocol}://#{account_name}.#{base_url}#{(path or "").start_with?("/") ? "" : "/"}#{(path or "")}" 
+        if self.use_sas_auth_only 
+          uri << "?#{self.sharedaccesssignature.gsub(/\?/,'')}" 
+	else
+          uri << "?#{query_params}" if query_params
+        end        
         return uri
       end
       
@@ -50,7 +58,7 @@ module WAZ
       # Creates a canonical representation of the message by combining account_name/resource_path.
       def canonicalize_message(url)
         uri_component = url.gsub(/https?:\/\/[^\/]+\//i, '').gsub(/\?.*/i, '')
-        comp_component = url.scan(/(comp=[^&]+)/i).first()
+        comp_component = url.scan(/comp=[^&]+/i).first()
         uri_component << "?#{comp_component}" if comp_component
         canonicalized_message = "/#{self.account_name}/#{uri_component}"
         return canonicalized_message
@@ -69,8 +77,8 @@ module WAZ
 
         signature += canonicalize_headers(options[:headers]) + "\x0A" unless self.type_of_service == 'table'
         signature += canonicalize_message(options[:url])
-                     
-        Base64.encode64(HMAC::SHA256.new(Base64.decode64(self.access_key)).update(signature.toutf8).digest)
+        signature = signature.toutf8 if(signature.respond_to? :toutf8)
+        Base64.encode64(HMAC::SHA256.new(Base64.decode64(self.access_key)).update(signature).digest)
       end
 
       def generate_signature20090919(options = {})
@@ -88,14 +96,15 @@ module WAZ
                     (options[:headers]["Range"] or "")+ "\x0A" +                    
                     canonicalize_headers(options[:headers]) + "\x0A" +
                     canonicalize_message20090919(options[:url])
-                    
-        Base64.encode64(HMAC::SHA256.new(Base64.decode64(self.access_key)).update(signature.toutf8).digest)        
+
+        signature = signature.toutf8 if(signature.respond_to? :toutf8)
+        Base64.encode64(HMAC::SHA256.new(Base64.decode64(self.access_key)).update(signature).digest)
       end
       
       def canonicalize_message20090919(url)
         uri_component = url.gsub(/https?:\/\/[^\/]+\//i, '').gsub(/\?.*/i, '')
         query_component = (url.scan(/\?(.*)/i).first() or []).first()
-        query_component = query_component.split('&').sort{|a, b| a <=> b}.map{ |p| p.split('=').join(':') }.join("\n") if query_component
+        query_component = query_component.split('&').sort{|a, b| a <=> b}.map{ |p| CGI::unescape(p.split('=').join(':')) }.join("\n") if query_component
         canonicalized_message = "/#{self.account_name}/#{uri_component}"
         canonicalized_message << "\n#{query_component}" if query_component
         return canonicalized_message

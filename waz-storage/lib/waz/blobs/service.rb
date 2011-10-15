@@ -28,7 +28,7 @@ module WAZ
       # accessible or not.
       def get_container_acl(container_name)
         headers = execute(:get, container_name, { :restype => 'container', :comp => 'acl' }, {:x_ms_version => '2009-09-19'}).headers
-        headers[:x_ms_prop_publicaccess].downcase == true.to_s
+        headers[:x_ms_blob_public_access]
       end
 
       # Sets the value of the :x_ms_prop_publicaccess header from the
@@ -36,8 +36,10 @@ module WAZ
       # accessible or not.
       #
       # Default is _false_
-      def set_container_acl(container_name, public_available = false)
-        execute :put, container_name, { :restype => 'container', :comp => 'acl' }, { :x_ms_prop_publicaccess => public_available.to_s, :x_ms_version => '2009-09-19' }
+      def set_container_acl(container_name, public_available = WAZ::Blobs::BlobSecurity::Private)
+        publicity = {:x_ms_version => '2009-09-19' }
+        publicity[:x_ms_blob_public_access] = public_available unless public_available == WAZ::Blobs::BlobSecurity::Private
+        execute :put, container_name, { :restype => 'container', :comp => 'acl' }, publicity
       end
 
       # Lists all the containers existing on the current storage account.
@@ -60,13 +62,14 @@ module WAZ
 
       # Lists all the blobs inside the given container.
       def list_blobs(container_name)
-        content = execute(:get, container_name, { :comp => 'list'})
+        content = execute(:get, container_name, { :restype => 'container', :comp => 'list'}, {:x_ms_version => '2009-09-19'})
         doc = REXML::Document.new(content)
         containers = []
         REXML::XPath.each(doc, '//Blob/') do |item|
           containers << { :name => REXML::XPath.first(item, "Name").text,
                           :url => REXML::XPath.first(item, "Url").text,
-                          :content_type =>  REXML::XPath.first(item, "ContentType").text }
+                          :content_type =>  REXML::XPath.first(item.elements["Properties"], "Content-Type").text }
+
         end
         return containers
       end
@@ -82,7 +85,19 @@ module WAZ
         default_headers = {"Content-Type" => content_type, :x_ms_version => "2009-09-19", :x_ms_blob_type => "BlockBlob"}
         execute :put, path, nil, metadata.merge(default_headers), payload
       end
-      
+
+      # Commits a list of blocks to the given blob.
+      #
+      # blockids is a list of valid, already-uploaded block IDs (base64-encoded)
+      #
+      # content_type is required by the blobs api, but on this method is defaulted to "application/octect-stream"
+      #
+      # metadata is a hash that stores all the properties that you want to add to the blob when creating it.
+      def put_block_list(path, blockids, content_type = "application/octet-stream", metadata = {})
+        default_headers = {"Content-Type" => content_type, :x_ms_version => "2009-09-19"}
+        execute :put, path, { :comp => 'blocklist' }, metadata.merge(default_headers), '<?xml version="1.0" encoding="utf-8"?><BlockList>' + blockids.map {|id| "<Latest>#{id.rstrip}</Latest>"}.join + '</BlockList>'
+      end
+
       # Retrieves a blob (content + headers) from the current path.
       def get_blob(path, options = {})
         execute :get, path, options, {:x_ms_version => "2009-09-19"}
@@ -103,6 +118,11 @@ module WAZ
         execute :put, path, { :comp => 'properties' }, properties.merge({:x_ms_version => "2009-09-19"})
       end
       
+      # Set user defined metadata - overwrites any previous metadata key:value pairs
+      def set_blob_metadata(path, metadata = {}) 
+        execute :put, path, { :comp => 'metadata' }, metadata.merge({:x_ms_version => "2009-09-19"})
+      end 
+
       # Copies a blob within the same account (not necessarily to the same container)
       def copy_blob(source_path, dest_path)
         execute :put, dest_path, nil, { :x_ms_version => "2009-09-19", :x_ms_copy_source => canonicalize_message(source_path) }
